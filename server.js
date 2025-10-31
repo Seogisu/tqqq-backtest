@@ -13,6 +13,14 @@ app.use(express.static('public'));
 // Yahoo Finance v8 API를 사용하여 주가 데이터 가져오기 (미래 시점 방지 로직 추가)
 async function getStockData(ticker, startDate, endDate) {
   try {
+    // 💡 [수정] 한국 주식 티커에 거래소 식별자 추가 (005930 오류 해결)
+    let yahooTicker = ticker;
+    // 티커가 6자리 숫자이고, 아직 거래소 식별자가 붙지 않은 경우 처리
+    if (yahooTicker.match(/^\d{6}$/)) {
+        // KOSPI 종목 코드는 '.KS'를 붙임 (005930 등)
+        yahooTicker = `${ticker}.KS`;
+    }
+
     const start = Math.floor(new Date(startDate).getTime() / 1000);
     const end = Math.floor(new Date(endDate).getTime() / 1000);
     
@@ -31,7 +39,8 @@ async function getStockData(ticker, startDate, endDate) {
       }
       
       // 미래 시점을 포함하는 대신, 오늘까지의 데이터로 요청 URL 재구성
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?period1=${newStart}&period2=${newEnd}&interval=1d`;
+      // 💡 수정된 yahooTicker 사용
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooTicker}?period1=${newStart}&period2=${newEnd}&interval=1d`;
       
       const response = await fetch(url, {
         headers: {
@@ -70,7 +79,8 @@ async function getStockData(ticker, startDate, endDate) {
 
     }
 
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?period1=${start}&period2=${finalEnd}&interval=1d`;
+    // 💡 수정된 yahooTicker 사용
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooTicker}?period1=${start}&period2=${finalEnd}&interval=1d`;
     
     const response = await fetch(url, {
       headers: {
@@ -443,11 +453,8 @@ app.post('/api/advanced-backtest', async (req, res) => {
         if (nextValidIndex === -1) {
              throw new Error(`요청하신 시작일(${startDate}) 이후의 주가 데이터가 존재하지 않습니다.`);
         }
-        // userStartIndex 대신 다음 거래일 인덱스를 사용
         const nextValidDate = tqqqData[nextValidIndex].date.toISOString().split('T')[0];
         console.log(`요청 시작일(${startDate})은 휴일입니다. 실제 시작일을 다음 영업일인 ${nextValidDate}로 조정합니다.`);
-        // 이제 nextValidIndex를 userStartIndex로 간주
-        // (이 코드는 userStartIndex가 -1인 경우의 처리이며, 아래 actualStartIndex 계산에 사용됨)
     }
 
     const stock1FirstValidIndex = syncedStock1Data.findIndex(d => d.close > 0);
@@ -461,7 +468,6 @@ app.post('/api/advanced-backtest', async (req, res) => {
     }
     
     // 실제 시작 인덱스는 MA 유효점, 유저 요청 시작점(또는 다음 거래일), 각 종목의 유효 시작점 중 가장 늦은 날
-    // userStartIndex가 -1이면 findIndex 로직을 다시 사용하여 다음 거래일 인덱스를 찾아야 함.
     let effectiveUserStartIndex;
     if (userStartIndex === -1) {
         effectiveUserStartIndex = tqqqData.findIndex(d => d.date.toISOString().split('T')[0] >= startDate);
